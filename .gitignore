@@ -1,0 +1,49 @@
+# 前端依赖、构建与工具缓存
+node_modules/
+dist/
+.vite/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# 本地配置与密钥（保留可提交的模板）
+*.local
+.env
+.env.*
+!.env.example
+**/config.yaml
+**/config.yml
+**/config.*.yaml
+**/config.*.yml
+!config.template.yaml
+
+# 本地数据库
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Python 虚拟环境与缓存
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 日志与临时产物
+*.log
+logs/
+__tmp__/
+*.tmp
+*.bak
+
+# 系统与编辑器本地文件
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
