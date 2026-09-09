@@ -122,6 +122,8 @@ const selected = ref<Candidate>(emptyCandidate),
   feedbackExplanation = ref(""),
   finalScore = ref<number>(),
   dateNote = ref("");
+const dateTab = ref<"plan" | "note" | "activity">("plan");
+const dateDirty = ref(false);
 const streaming = ref(false),
   streamTarget = ref<"match" | "date">("match"),
   streamError = ref(""),
@@ -157,9 +159,7 @@ watch(
 );
 watch([budget, startTime, mealPreference, foodRestrictions], () => {
   if (streamTarget.value === "date") stopStream();
-  planReady.value = false;
-  feedback.value = false;
-  finalScore.value = undefined;
+  dateDirty.value = true;
 });
 function toggleInterest(value: string) {
   if (busy.value) return;
@@ -192,6 +192,7 @@ function begin(target: "match" | "date") {
   streamStopped.value = false;
   streamError.value = "";
   busy.value = true;
+  stageLabel.value = "正在连接豆包…";
   stage.value = 0;
   trace.value = [];
   dateTools.value = [];
@@ -258,7 +259,7 @@ onMounted(async () => {
 });
 
 function navigate(value: Step) {
-  if (busy.value) return;
+  if (busy.value && streamTarget.value !== "date") return;
   if (value !== "profile" && !agentSession.value) {
     notify("请先完善并保存个人资料");
     return;
@@ -282,6 +283,12 @@ async function choose(candidate: Candidate) {
   streamTarget.value = "date";
   streamError.value = "";
   streamStopped.value = false;
+  dateTab.value = "plan";
+  dateNote.value = "";
+  generatedPlan.value = [];
+  latestResult.value = undefined;
+  dateTools.value = [];
+  trace.value = [];
   selected.value = candidate;
   budget.value = Math.min(120, candidate.budget);
   planReady.value = false;
@@ -308,9 +315,11 @@ async function choose(candidate: Candidate) {
     planReady.value = true;
     planRevision.value++;
   }
+  await nextTick();
+  dateDirty.value = false;
 }
 async function generatePlan() {
-  if (!agentSession.value) return;
+  if (!agentSession.value || streaming.value) return;
   if (
     !Number.isFinite(budget.value) ||
     budget.value < 30 ||
@@ -329,10 +338,8 @@ async function generatePlan() {
   }
   planError.value = "";
   const task = begin("date");
-  dateNote.value = "";
-  planReady.value = false;
-  finalScore.value = undefined;
-  feedback.value = false;
+  if (!planReady.value) dateTab.value = "activity";
+  let receivedResult = false;
   try {
     await readStream<DateResult>(
       "/api/date/plan",
@@ -358,6 +365,9 @@ async function generatePlan() {
           if (tool) Object.assign(tool, event);
         }
         if (event.type === "result") {
+          receivedResult = true;
+          dateDirty.value = false;
+          dateNote.value = "";
           latestResult.value = event;
           generatedPlan.value = event.plan;
           feedback.value = event.feedback;
@@ -370,7 +380,7 @@ async function generatePlan() {
         if (event.type === "delta") dateNote.value += event.text;
       },
     );
-    if (task.id === runId && latestResult.value && agentSession.value) {
+    if (task.id === runId && receivedResult && latestResult.value && agentSession.value) {
       agentSession.value.latest_date = {
         request: {
           candidate_id: selected.value.id,
@@ -453,7 +463,7 @@ onBeforeUnmount(() => {
           :key="item.id"
           :class="['nav-item', { active: step === item.id }]"
           :aria-current="step === item.id ? 'step' : undefined"
-          :disabled="busy"
+          :disabled="busy && streamTarget !== 'date'"
           @click="navigate(item.id)"
         >
           <component :is="item.icon" :size="18" :stroke-width="1.6" /><span>{{
@@ -490,7 +500,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <main ref="mainContent" :class="{ 'profile-page': step === 'profile' }">
+      <main ref="mainContent" :class="{ 'profile-page': step === 'profile', 'date-page': step === 'date' }">
         <template v-if="step === 'profile'">
           <section class="hero">
             <div class="hero-copy">
@@ -735,24 +745,11 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else>
-          <section class="result-heading">
-            <div>
-              <span class="section-kicker"
-                ><span></span>第三步 · 把相遇放进日常</span
-              >
-              <h1>一次见面，<span class="accent-word">刚好就好。</span></h1>
-              <p>给两个人留出舒服的时间，也给故事留一点空白。</p>
-            </div>
-            <Button variant="ghost" @click="navigate('matches')"
-              ><ArrowLeft :size="15" />回到匹配</Button
-            >
-          </section>
           <div class="date-layout">
             <section class="date-settings">
               <div class="panel-title">
                 <div>
-                  <span class="small-index">FOR THE TWO OF YOU</span>
-                  <h2>这次，和谁见面？</h2>
+                  <h2>和 {{ selected.name }} 的约会</h2>
                 </div>
               </div>
               <div class="date-person">
@@ -832,28 +829,39 @@ onBeforeUnmount(() => {
               <p v-if="planError" role="alert" class="error-text">
                 {{ planError }}
               </p>
+              <div class="date-submit">
               <Button
                 class="plan-button"
                 :disabled="streaming"
                 @click="generatePlan"
                 ><Sparkles :size="16" />{{
-                  planReady ? "重新规划" : "生成约会安排"
+                  streaming ? "正在规划…" : dateDirty && planReady ? "按新条件规划" : planReady ? "重新规划" : "生成约会安排"
                 }}<ArrowRight :size="16" /></Button
-              ><span class="date-footnote">豆包分析 · 本地预算校验</span>
+              >
+              <p v-if="dateDirty && planReady" class="date-footnote">条件已修改，右侧保留上次行程。</p>
+              </div>
             </section>
-            <section
-              v-if="busy && !planReady"
-              class="date-inline-progress"
-              role="status"
-            >
-              <span class="section-kicker"><span></span>约会助手正在处理</span>
-              <h3>让这次见面，更照顾两个人</h3>
-              <p>{{ stageLabel || "正在连接豆包…" }}</p>
+            <section class="date-output">
+              <div class="date-output-header">
+                <div class="date-view-switch" aria-label="约会内容">
+                  <button :class="{ active: dateTab === 'plan' }" :aria-pressed="dateTab === 'plan'" @click="dateTab = 'plan'">行程</button>
+                  <button :class="{ active: dateTab === 'note' }" :aria-pressed="dateTab === 'note'" @click="dateTab = 'note'">安排说明</button>
+                  <button :class="{ active: dateTab === 'activity' }" :aria-pressed="dateTab === 'activity'" @click="dateTab = 'activity'">生成过程<span v-if="streaming" class="date-live-dot"></span></button>
+                </div>
+                <Button v-if="streaming" variant="ghost" size="sm" @click="cancel"><Square :size="12" />停止</Button>
+              </div>
+              <div class="date-generation-status" role="status" aria-live="polite">
+                <Sparkles v-if="streaming" :size="14" /><Check v-else-if="planReady" :size="14" />
+                <span>{{ streaming ? stageLabel : streamError ? '生成未完成，可重试；已有行程保留' : streamStopped ? '已停止，已有内容保留' : dateDirty && planReady ? '条件已修改，等待重新规划' : planReady ? '行程已就绪' : '调整左侧条件，开始规划' }}</span>
+              </div>
+              <div v-show="dateTab === 'activity'" class="date-activity date-scroll-pane">
+                <p v-if="!trace.length && !dateTools.length">开始规划后，这里会显示实际执行的步骤与结果。</p>
+                <ol class="date-stage-list"><li v-for="(item, index) in trace" :key="index">{{ item }}</li></ol>
               <details
                 v-for="tool in dateTools"
                 :key="tool.id"
                 class="tool-activity"
-                :class="tool.status || 'running'"
+                :class="tool.status || (streaming ? 'running' : 'error')"
               >
                 <summary>
                   <Check v-if="tool.status === 'success'" :size="13" /><Sparkles
@@ -861,7 +869,7 @@ onBeforeUnmount(() => {
                     :size="13"
                   /><span
                     >{{ tool.label
-                    }}<small>{{ tool.summary || "正在执行…" }}</small></span
+                    }}<small>{{ tool.summary || (streaming ? "正在执行…" : "已中断") }}</small></span
                   >
                 </summary>
                 <div class="tool-details">
@@ -873,18 +881,15 @@ onBeforeUnmount(() => {
                   }}</pre>
                 </div>
               </details>
-              <p>费用与时间会在本地校验，你可以随时停止。</p>
-              <Button variant="outline" @click="cancel"
-                ><Square :size="13" />停止并保留输入</Button
-              >
-            </section>
-            <section v-else-if="!planReady" class="date-empty">
+              </div>
+              <div v-show="dateTab === 'plan'" class="date-scroll-pane">
+            <section v-if="!planReady" class="date-empty">
               <div class="empty-art">
                 <Coffee :size="48" :stroke-width="1" /><span>+</span
                 ><Leaf :size="43" :stroke-width="1" />
               </div>
-              <span class="small-index">GOOD COMPANY, SIMPLE PLANS.</span>
-              <h2>一顿饭，一段路，<br />一些想说的话。</h2>
+
+              <h2>{{ streaming ? "正在为你安排这次见面" : "给见面留一点期待" }}</h2>
               <p>
                 选好预算和开始时间，<br />我们会试着找到两个人都舒服的安排。
               </p>
@@ -955,6 +960,9 @@ onBeforeUnmount(() => {
                   >
                 </div>
               </section>
+            </div>
+              </div>
+              <div v-show="dateTab === 'note'" class="date-note-pane">
               <StreamNote
                 :key="planRevision"
                 :content="dateNote"
@@ -965,37 +973,12 @@ onBeforeUnmount(() => {
                 @retry="generatePlan"
                 title="为什么这样安排"
               />
-            </div>
+              </div>
+            </section>
           </div>
         </template>
 
-        <details v-if="step === 'date' && trace.length" class="agent-trace">
-          <summary>查看 Agent 工作记录</summary>
-          <ol>
-            <li v-for="(item, index) in trace" :key="index">{{ item }}</li>
-          </ol>
-          <details
-            v-for="tool in dateTools"
-            :key="tool.id"
-            class="tool-activity"
-          >
-            <summary>
-              <span
-                >{{ tool.label
-                }}<small>{{ tool.summary || "本轮已中断" }}</small></span
-              >
-            </summary>
-            <div class="tool-details">
-              <strong>输入</strong>
-              <pre>{{ JSON.stringify(tool.input, null, 2) }}</pre>
-              <strong v-if="tool.output">结果</strong>
-              <pre v-if="tool.output">{{
-                JSON.stringify(tool.output, null, 2)
-              }}</pre>
-            </div>
-          </details>
-        </details>
-        <footer v-if="step !== 'matches'" class="page-footer">
+        <footer v-if="step === 'profile'" class="page-footer">
           <span>缘析 · 让相遇更懂你</span
           ><span>候选人物为虚构数据 · 适配分不代表恋爱概率</span
           ><span>Made for a little connection.</span>

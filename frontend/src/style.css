@@ -3050,3 +3050,82 @@ main.profile-page {
 .profile-page .hero {
   padding-top: 12px;
 }
+
+/* Date workspace: a stable viewport, with independently scrollable content. */
+main.date-page {
+  display: flex;
+  overflow: hidden;
+  padding: 20px 28px;
+  max-width: none;
+  margin: 0;
+}
+.date-page .date-layout {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 24px;
+}
+.date-page .date-settings {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 20px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+}
+.date-page .panel-title { margin-bottom: 16px; }
+.date-page .panel-title h2 { font-size: 16px; }
+.date-page .date-person h3 { font-size: 21px; }
+.date-page .preference-compare { margin: 18px 0; padding: 16px 0; }
+.date-page .date-controls { gap: 16px; }
+.date-page .date-submit {
+  position: sticky;
+  bottom: -20px;
+  padding: 16px 0 20px;
+  background: var(--background, #f8f8f5);
+}
+.date-page .plan-button { margin-top: 0; width: 100%; }
+.date-output {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.date-output-header { display: flex; align-items: center; justify-content: space-between; min-height: 46px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.date-view-switch { display: flex; gap: 20px; }
+.date-view-switch button { display: flex; align-items: center; gap: 6px; padding: 12px 0; border-bottom: 2px solid transparent; font-size: 13px; color: #89907f; }
+.date-view-switch button.active { border-bottom-color: var(--primary); color: var(--foreground); }
+.date-generation-status { min-height: 42px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #78856a; flex-shrink: 0; padding: 8px 0; }
+.date-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.date-scroll-pane { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; overflow-wrap: anywhere; }
+.date-page .date-empty { min-height: 0; height: 100%; border: 0; background: transparent; padding: 24px; }
+.date-page .date-empty h2 { font-size: 25px; }
+.date-page .plan-results { display: block; }
+.date-page .itinerary { border: 0; border-radius: 0; background: transparent; padding: 18px 8px; }
+.date-page .itinerary-heading { margin-bottom: 24px; }
+.date-page .timeline-item { min-height: 100px; }
+.date-page .feedback-card { margin-top: 12px; }
+.date-note-pane { flex: 1; min-height: 0; overflow: hidden; display: flex; }
+.date-page .stream-note { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; padding: 12px 0; border: 0; background: transparent; margin: 0; }
+.date-page .stream-heading { display: none; }
+.date-page .stream-viewport { flex: 1; min-height: 0; max-height: none; overflow: auto; overflow-wrap: anywhere; }
+.date-page .stream-actions { flex-shrink: 0; }
+.date-stage-list { padding: 0 0 12px 20px; font-size: 13px; line-height: 2.4; }
+.date-activity .tool-details pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  main.date-page { padding: 12px; }
+  .date-page .date-layout { grid-template-columns: 240px minmax(0, 1fr); gap: 12px; }
+  .date-page .date-settings { padding: 12px; }
+}
+@media (max-width: 640px) {
+  .date-page .date-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 32%) minmax(0, 1fr); gap: 8px; }
+  .date-page .date-settings { border-right: 0; border-bottom: 1px solid var(--border); }
+  .date-page .date-submit { bottom: -12px; padding: 8px 0; }
+  .date-page .timeline-item { min-height: 88px; }
+}

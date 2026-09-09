@@ -72,6 +72,7 @@ onBeforeUnmount(() => clearTimeout(copyTimer));
         v-if="running"
         class="stream-cursor"
       ></span>
+      <p v-if="!content && running">正在准备说明，行程和生成过程可随时切换查看。</p>
       <p v-if="!content && !running">
         {{ error ? "暂未生成说明，请重试。" : "说明尚未生成。" }}
       </p>
@@ -79,12 +80,12 @@ onBeforeUnmount(() => clearTimeout(copyTimer));
     <div class="stream-actions">
       <span class="stream-status" role="status">{{
         running
-          ? "正在展开这份观察…"
+          ? "正在生成安排说明…"
           : error
             ? "生成失败，已保留当前内容"
             : stopped
               ? "已停止，保留当前内容"
-              : "观察已完成"
+              : content ? "说明已完成" : "等待生成说明"
       }}</span>
       <div>
         <Button v-if="!follow" variant="ghost" size="sm" @click="latest"
