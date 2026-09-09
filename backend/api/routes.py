@@ -17,7 +17,7 @@ def services(request: Request) -> Services:
 async def health(ctx: Annotated[Services, Depends(services)]):
     return {
         "status": "ok",
-        "provider": "volcengine-ark",
+        "provider": ctx.settings.llm.provider,
         "model": ctx.settings.llm.model,
         "candidate_count": len(ctx.repository.candidates()),
     }

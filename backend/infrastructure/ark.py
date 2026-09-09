@@ -18,7 +18,7 @@ class Ark:
         )
 
     def payload(self, system, data, stream=False):
-        return {
+        payload = {
             "model": self.config.model,
             "messages": [
                 {"role": "system", "content": system},
@@ -29,8 +29,10 @@ class Ark:
             "max_tokens": min(self.config.max_tokens, 900)
             if stream
             else self.config.max_tokens,
-            "thinking": {"type": self.config.thinking},
         }
+        if self.config.provider == "volcengine-ark":
+            payload["thinking"] = {"type": self.config.thinking}
+        return payload
 
     @property
     def headers(self):
@@ -43,13 +45,13 @@ class Ark:
         if response.status_code >= 300:
             explanations = {
                 401: "API Key 无效，请检查 config.yaml",
-                403: "模型无访问权限，请在方舟开通模型或配置已授权的模型 ID",
+                403: "模型无访问权限，请在服务商处开通模型或配置已授权的模型 ID",
                 404: "模型或接入点不存在，请检查 llm.model",
                 429: "模型请求受限，请稍后重试",
                 400: "模型参数不兼容，请检查模型是否支持 Chat Completions 和 JSON 输出",
             }
             raise ModelError(
-                explanations.get(response.status_code, "方舟服务暂时不可用，请稍后重试")
+                explanations.get(response.status_code, "模型服务服务暂时不可用，请稍后重试")
                 + f"（HTTP {response.status_code}）"
             )
 
@@ -102,9 +104,9 @@ class Ark:
                     raise ModelError("模型结果未通过结构校验，请重新生成") from None
                 prompt += "\n上次输出未通过校验。请重新检查所有字段和可选项，不要输出 Markdown 代码围栏。"
             except httpx.TimeoutException:
-                raise ModelError("方舟请求超时，请重试") from None
+                raise ModelError("模型服务请求超时，请重试") from None
             except httpx.RequestError:
-                raise ModelError("无法连接方舟，请检查网络") from None
+                raise ModelError("无法连接模型服务，请检查网络") from None
 
     async def stream(self, system, data):
         try:
@@ -121,7 +123,7 @@ class Ark:
                         return
                     chunk = json.loads(raw)
                     if chunk.get("error"):
-                        raise ModelError("方舟流式生成失败，请重试")
+                        raise ModelError("模型服务流式生成失败，请重试")
                     for choice in chunk.get("choices", []):
                         reason = choice.get("finish_reason")
                         if reason and reason != "stop":
@@ -134,9 +136,9 @@ class Ark:
                 if not completed:
                     raise ModelError("流式连接中断，请重试")
         except httpx.TimeoutException:
-            raise ModelError("方舟流式响应超时，请重试") from None
+            raise ModelError("模型服务流式响应超时，请重试") from None
         except (httpx.RequestError, ValueError, KeyError, TypeError):
-            raise ModelError("方舟流式连接异常，请重试") from None
+            raise ModelError("模型服务流式连接异常，请重试") from None
 
     async def agent_step(self, messages, tools):
         """Stream public text and assemble native function-call deltas, never reasoning_content."""

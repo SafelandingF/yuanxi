@@ -40,16 +40,20 @@ def load_settings() -> Settings:
         if not isinstance(key, str) or not key.strip() or key.startswith("YOUR_"):
             raise ValueError("missing key")
         llm["api_key"] = key.strip()
+        if llm.get("provider", "volcengine-ark") != "volcengine-ark" and (
+            not llm.get("base_url") or not llm.get("model")
+        ):
+            raise ValueError("base_url and model are required")
         model = ModelConfig.model_validate(llm)
         url = urlparse(model.base_url)
         if (
-            url.scheme != "https"
-            or url.hostname != "ark.cn-beijing.volces.com"
-            or url.path.rstrip("/") != "/api/v3"
+            url.scheme not in ("https", "http")
+            or not url.hostname
             or url.query
             or url.fragment
             or url.username
-            or url.port not in (None, 443)
+            or url.password
+            or url.path.rstrip("/").endswith("/chat/completions")
         ):
             raise ValueError("invalid endpoint")
         if model.thinking not in ("disabled", "enabled"):
@@ -63,5 +67,5 @@ def load_settings() -> Settings:
         )
     except Exception:  # noqa: BLE001 - Do not expose secrets or model payloads.
         raise RuntimeError(
-            "config.yaml 配置无效，请检查 apikey 和方舟模型配置"
+            "config.yaml 配置无效，请检查 apikey、llm.base_url 和 llm.model"
         ) from None

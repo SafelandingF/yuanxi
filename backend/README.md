@@ -1,6 +1,6 @@
 # 后端分层说明
 
-后端按职责拆分：接口处理请求，服务管理一次操作的生命周期，Agent 决定如何使用模型与工具，业务规则决定哪些结果有效，基础设施负责连接方舟和 SQLite。这样修改提示词、评分规则或存储方式时，可以找到明确的位置，也能在没有真实密钥的情况下测试。
+后端按职责拆分：接口处理请求，服务管理一次操作的生命周期，Agent 决定如何使用模型与工具，业务规则决定哪些结果有效，基础设施负责连接模型服务和 SQLite。这样修改提示词、评分规则或存储方式时，可以找到明确的位置，也能在没有真实密钥的情况下测试。
 
 运行方法在仓库根目录 [README](../README.md)；Agent 的具体流程在 [agents/README](agents/README.md)。
 
@@ -16,10 +16,10 @@ flowchart TD
     Agent --> Repository
     Agent --> Model[LanguageModel 契约]
     SQLite[infrastructure/sqlite：SQLite 实现] -.实现.-> Repository
-    Ark[infrastructure/ark：方舟实现] -.实现.-> Model
+    Ark[infrastructure/ark：模型协议实现] -.实现.-> Model
 ```
 
-图中业务和 Agent 使用能力契约。`bootstrap.py` 将具体方舟客户端和 SQLite 仓库注入这些对象；它是装配点，允许同时认识内层逻辑与外层实现。
+图中业务和 Agent 使用能力契约。`bootstrap.py` 将具体模型客户端和 SQLite 仓库注入这些对象；它是装配点，允许同时认识内层逻辑与外层实现。
 
 ## 各层的职责
 
@@ -31,7 +31,7 @@ flowchart TD
 | `services/` | 创建与读取会话、并发控制、请求幂等、结果持久化 | 具体模型协议、HTTP 状态码、SQL |
 | `agents/` | 画像、匹配工具循环、约会协作、可展示的结果与卡片 | FastAPI、HTTPX、SQLite、直接读取密钥 |
 | `domain/` | 数据校验、纯业务函数、异常、事件结构和依赖契约 | Web 框架、网络调用、读写数据库 |
-| `infrastructure/` | HTTPX 方舟适配、SQLite 读写、虚构数据初始化 | 页面流程与 Agent 选择策略 |
+| `infrastructure/` | HTTPX 模型协议适配、SQLite 读写、虚构数据初始化 | 页面流程与 Agent 选择策略 |
 | `core/config.py` | 读取并校验 YAML，保护密钥，解析本地路径 | 会话和推荐逻辑 |
 
 这是单进程、本地单用户课设，没有引入消息队列、ORM 或额外 Agent 框架。基础设施目前只有一个模型适配器和一个仓库实现，契约也只定义项目实际使用的能力。
@@ -52,7 +52,7 @@ domain/catalog.py           预设活动与费用
 domain/ports.py             LanguageModel / Repository 契约
 domain/events.py            框架无关的业务事件
 domain/errors.py            NotFound / Conflict / InvalidInput / ModelError
-infrastructure/ark.py        方舟请求、工具分片拼接、JSON 校验、重试
+infrastructure/ark.py        Chat Completions 请求、工具分片拼接、JSON 校验、重试
 infrastructure/sqlite.py     数据库连接、候选读取、会话保存与读取
 infrastructure/seed.py       1,200 位来自 datasets/candidates.json 的虚构人物
 ```

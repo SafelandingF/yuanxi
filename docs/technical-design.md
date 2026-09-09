@@ -1,6 +1,6 @@
 # 缘析本地技术方案
 
-Vue 页面访问本地 FastAPI，后端从 SQLite 读取虚构人物、保存会话，通过火山方舟调用豆包 Pro。API Key 仅由后端读取根目录 `config.yaml`；无需部署、本地大模型或复杂 Agent 框架。
+Vue 页面访问本地 FastAPI，后端从 SQLite 读取虚构人物、保存会话，通过兼容 Chat Completions 的 API 调用外部模型。API Key 仅由后端读取根目录 `config.yaml`；无需部署、本地大模型或复杂 Agent 框架。
 
 ## 产品与模块
 
@@ -13,7 +13,7 @@ Vue 页面访问本地 FastAPI，后端从 SQLite 读取虚构人物、保存会
 | `backend/services/` | 会话、并发、幂等和结果持久化。 |
 | `backend/agents/` | 独立画像、匹配与约会 Agent，工具定义和执行。 |
 | `backend/domain/` | 输入与结果结构、评分、筛选、预算等纯规则。 |
-| `backend/infrastructure/` | 方舟协议、SQLite 和虚构样本。 |
+| `backend/infrastructure/` | 模型协议、SQLite 和虚构样本。 |
 | `AgentWorkspace.vue` | 单栏对话、每轮折叠工具记录、固定输入框、按需展开筛选、停止和幂等重试。 |
 | `AgentCard.vue` | 画像、筛选条件、候选、对比、确认和空结果六种卡片及动作。 |
 
@@ -23,11 +23,11 @@ Vue 页面访问本地 FastAPI，后端从 SQLite 读取虚构人物、保存会
 
 ## 模型协议
 
-- Base URL：`https://ark.cn-beijing.volces.com/api/v3`
-- 默认模型：`doubao-seed-2-0-pro-260215`
+- Base URL 和模型名：按服务商填写 `llm.base_url`、`llm.model`，模板使用 `provider: openai-compatible`。
+- 保留旧的仅 Key 配置兼容：默认使用原方舟地址和豆包 Pro。
 - `POST /chat/completions`，`Authorization: Bearer <apikey>`。
 - 匹配对话：`stream: true`、`tools`、`tool_choice: auto`；拼接 `delta.tool_calls[index]` 的名称和参数，收到正常 `tool_calls` 结束才执行。结果以 `role: tool` 和原始 `tool_call_id` 回传模型。
-- 只向前端转发公开回复 `delta.content`。内部 `reasoning_content` 不消费、不存储；默认 `thinking: disabled`。
+- 只向前端转发公开回复 `delta.content`。内部 `reasoning_content` 不消费、不存储；仅方舟模式发送 `thinking` 扩展参数（默认 disabled），通用模式不发送。
 - 画像和约会分析：`response_format: {type: json_object}`，经 Pydantic 和业务约束校验。结构错误最多重试一次。
 - 429/502/503/504 在消费响应前最多重试三次，等待 5、15、30 秒；中途断流不重播，正常结束标记缺失或截断均视为失败。
 

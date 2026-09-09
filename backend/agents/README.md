@@ -33,7 +33,7 @@
 sequenceDiagram
     participant S as 会话服务
     participant A as 匹配 Agent
-    participant M as 豆包 Pro
+    participant M as 配置的模型服务
     participant T as 本地工具
     S->>A: 工作副本 + 用户消息
     A->>M: 上下文 + tools
@@ -70,11 +70,11 @@ sequenceDiagram
 
 **约会 Agent** 接收已确认的人物和用户填写的预算、时间、口味，从本地活动目录选择餐饮、活动和饮品。`domain/dating.py` 验证活动 ID、双方较低预算、时间线，以及见面频率冲突。若存在“每周 2–3 次”和“每月 1–2 次”的明显差异，再以匹配助手角色调用模型解释反馈；规则只修正一次 10 分，重复规划不累计扣分。
 
-三者都是同一进程内的明确职责，通过同一个模型客户端调用豆包，不需要独立服务、Agent 框架或本地模型。
+三者都是同一进程内的明确职责，通过同一个模型客户端调用外部模型，不需要独立服务、Agent 框架或本地模型。
 
 ## 流式文字与可操作结果
 
-模型访问由 `LanguageModel` 契约承接，实际方舟协议在 `infrastructure/ark.py`：
+模型访问由 `LanguageModel` 契约承接，实际模型协议在 `infrastructure/ark.py`：
 
 - 调用 `POST /chat/completions`，设置 `stream=true` 和工具定义。
 - 按 `delta.tool_calls[index]` 拼接工具名称和参数；收到正常结束标记后才执行完整调用。
@@ -91,7 +91,7 @@ Agent 向外只输出 Python 字典事件，例如 `delta`、`tool_start`、`too
 
 会话服务用 `request_id` 防止重复提交：相同编号、相同内容的已完成请求直接恢复状态；同编号不同内容返回冲突。同一段会话同时只允许一轮修改。旧卡片版本不匹配时不可选择。
 
-方舟限流和暂时故障由模型适配器在消费响应前有限重试；已经开始输出的流不自动重播。JSON 结构化结果最多重新生成一次，业务校验仍由本地规则完成。
+模型服务限流和暂时故障由模型适配器在消费响应前有限重试；已经开始输出的流不自动重播。JSON 结构化结果最多重新生成一次，业务校验仍由本地规则完成。
 
 ## 怎样增加能力
 
