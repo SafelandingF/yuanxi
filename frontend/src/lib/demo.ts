@@ -50,9 +50,11 @@ export const interestOptions = [
 ];
 
 export interface PlanItem {
+  catalog_id?: string;
   time: string;
   title: string;
   detail: string;
   cost: number;
+  duration_minutes?: number;
   kind: "food" | "walk" | "coffee";
 }

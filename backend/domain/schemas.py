@@ -39,9 +39,11 @@ class Profile(BaseModel):
 
 class DateRequest(BaseModel):
     meal_preference: Literal["都可以", "想吃锅类", "偏爱简餐", "偏爱素食"] = "都可以"
+    spending_style: Literal["性价比优先", "均衡安排", "体验优先"] = "均衡安排"
     food_restrictions: list[Literal["不吃辣", "素食"]] = Field(
         default_factory=list, max_length=2
     )
+    avoid_ids: list[str] = Field(default_factory=list, max_length=6)
     session_id: str = Field(min_length=1, max_length=50)
     candidate_id: int = Field(ge=1)
     budget: int = Field(ge=30, le=500)
@@ -53,6 +55,13 @@ class DateRequest(BaseModel):
         if value > "20:00":
             raise ValueError("请在 10:00 到 20:00 之间开始")
         return value
+
+    @field_validator("avoid_ids")
+    @classmethod
+    def valid_avoid_ids(cls, values):
+        if any(not value or len(value) > 50 for value in values):
+            raise ValueError("需要避开的项目 ID 无效")
+        return list(dict.fromkeys(values))
 
 
 class PortraitResult(BaseModel):

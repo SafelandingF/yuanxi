@@ -9,7 +9,11 @@ from unittest.mock import patch
 import httpx
 
 from backend.core.config import ModelConfig, Settings
-from backend.domain.dating import available_meals, validate_choice
+from backend.domain.dating import (
+    available_meals,
+    recommended_combinations,
+    validate_choice,
+)
 from backend.domain.schemas import DateChoice, DateRequest
 from backend.main import create_app
 
@@ -93,8 +97,137 @@ class LayerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_choice(too_expensive, meals, limit)
 
+    def test_local_planner_uses_budget_interests_and_avoids_last_plan(self):
+        profile = {
+            "interests": ["电影", "咖啡"],
+            "rhythm": "规律慢生活",
+        }
+        candidate = {
+            "budget": 120,
+            "food": "清淡、不太辣",
+            "interests": ["电影", "散步"],
+            "rhythm": "规律慢生活",
+        }
+        request = DateRequest(
+            session_id="test",
+            candidate_id=1,
+            budget=120,
+            start="18:00",
+            spending_style="均衡安排",
+        )
+        limit, meals = available_meals(candidate, request)
+        target, choices = recommended_combinations(
+            profile, candidate, request, meals, limit
+        )
+        self.assertEqual(target, 90)
+        self.assertTrue(choices)
+        self.assertTrue(all(choice["total"] <= limit for choice in choices))
+        self.assertLessEqual(
+            max(
+                sum(choice["meal_id"] == meal["id"] for choice in choices)
+                for meal in meals
+            ),
+            2,
+        )
+
+        first = choices[0]
+        retry = request.model_copy(
+            update={
+                "avoid_ids": [
+                    first["meal_id"],
+                    first["activity_id"],
+                    first["drink_id"],
+                ]
+            }
+        )
+        _, alternatives = recommended_combinations(
+            profile, candidate, retry, meals, limit
+        )
+        self.assertNotEqual(alternatives[0], first)
+
+    def test_meal_preference_and_dietary_rules_are_applied_locally(self):
+        candidate = {"budget": 150, "food": "都可以、爱尝鲜"}
+        request = DateRequest(
+            session_id="test",
+            candidate_id=1,
+            budget=150,
+            start="18:00",
+            meal_preference="想吃锅类",
+            food_restrictions=["不吃辣"],
+        )
+        _, meals = available_meals(candidate, request)
+        self.assertTrue(meals)
+        self.assertTrue(all("锅类" in meal["categories"] for meal in meals))
+        self.assertTrue(all(not meal["spicy"] for meal in meals))
+
 
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unconfigured_startup_exposes_only_setup_routes(self):
+        with (
+            patch("backend.main.load_settings", side_effect=RuntimeError("missing")),
+            patch(
+                "backend.api.routes.config_status",
+                return_value={
+                    "configured": False,
+                    "provider": "openai-compatible",
+                    "base_url": "",
+                    "model": "",
+                    "has_api_key": False,
+                },
+            ),
+        ):
+            app = create_app()
+            async with app.router.lifespan_context(app):
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app), base_url="http://test"
+                ) as http:
+                    health = await http.get("/api/health")
+                    self.assertEqual(health.json()["status"], "setup_required")
+                    config = await http.get("/api/config")
+                    self.assertFalse(config.json()["configured"])
+                    blocked = await http.get("/api/agent/sessions/unknown")
+                    self.assertEqual(blocked.status_code, 503)
+
+    async def test_config_submission_initializes_services_without_returning_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Settings(
+                database_path=Path(directory) / "test.db",
+                llm=ModelConfig(
+                    api_key="new-local-secret",
+                    provider="openai-compatible",
+                    base_url="https://models.example/v1",
+                    model="example-model",
+                ),
+            )
+            with (
+                patch("backend.main.load_settings", side_effect=RuntimeError("missing")),
+                patch(
+                    "backend.api.routes.settings_from_update",
+                    return_value=settings,
+                ),
+                patch("backend.api.routes.save_settings") as save,
+            ):
+                app = create_app()
+                async with app.router.lifespan_context(app):
+                    async with httpx.AsyncClient(
+                        transport=httpx.ASGITransport(app=app), base_url="http://test"
+                    ) as http:
+                        response = await http.put(
+                            "/api/config",
+                            json={
+                                "api_key": "new-local-secret",
+                                "provider": "openai-compatible",
+                                "base_url": "https://models.example/v1",
+                                "model": "example-model",
+                            },
+                        )
+                        self.assertEqual(response.status_code, 200)
+                        self.assertTrue(response.json()["configured"])
+                        self.assertNotIn("new-local-secret", response.text)
+                        health = await http.get("/api/health")
+                        self.assertEqual(health.json()["candidate_count"], 1200)
+                        save.assert_called_once_with(settings)
+
     async def test_default_startup_builds_dependencies_and_shutdown_closes_model(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = Settings(

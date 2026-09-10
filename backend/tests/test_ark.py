@@ -68,6 +68,70 @@ class ArkContractTests(unittest.IsolatedAsyncioTestCase):
             await self.ark.structured("反馈", {}, FeedbackResult)
         self.assertEqual(len(calls), 2)
 
+    async def test_deepseek_disables_thinking_for_short_structured_json(self):
+        await self.ark.client.aclose()
+        self.ark = Ark(
+            ModelConfig(
+                provider="openai-compatible",
+                base_url="https://api.deepseek.com",
+                model="deepseek-v4-pro",
+                api_key="test-only",
+            )
+        )
+
+        async def handler(request):
+            payload = json.loads(request.content)
+            self.assertEqual(payload["thinking"], {"type": "disabled"})
+            self.assertEqual(payload["response_format"], {"type": "json_object"})
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": json.dumps({"explanation": "已检查"})
+                            },
+                        }
+                    ]
+                },
+            )
+
+        self.client(handler)
+        result = await self.ark.structured("反馈", {}, FeedbackResult)
+        self.assertEqual(result.explanation, "已检查")
+
+    async def test_retry_prompt_contains_the_validation_reason(self):
+        calls = []
+
+        async def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": json.dumps({"explanation": "已检查"})
+                            },
+                        }
+                    ]
+                },
+            )
+
+        def reject_once(_result):
+            if len(calls) == 1:
+                raise ValueError("drink_id 必须是 tea 或 coffee")
+
+        self.client(handler)
+        result = await self.ark.structured(
+            "反馈", {}, FeedbackResult, validate=reject_once
+        )
+        self.assertEqual(result.explanation, "已检查")
+        retry_system = calls[1]["messages"][0]["content"]
+        self.assertIn("drink_id 必须是 tea 或 coffee", retry_system)
+
     async def test_truncated_stream_not_success(self):
         async def handler(request):
             return httpx.Response(
