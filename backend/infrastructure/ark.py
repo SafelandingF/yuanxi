@@ -1,6 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import ValidationError
@@ -30,7 +31,12 @@ class Ark:
             if stream
             else self.config.max_tokens,
         }
-        if self.config.provider == "volcengine-ark":
+        # DeepSeek V4 enables thinking by default. Structured replies in this
+        # application are intentionally short, so leaving thinking enabled can
+        # consume the output budget before the JSON body is completed.  The
+        # official DeepSeek endpoint supports the same switch as Ark.
+        host = (urlparse(self.config.base_url).hostname or "").lower()
+        if self.config.provider == "volcengine-ark" or host == "api.deepseek.com":
             payload["thinking"] = {"type": self.config.thinking}
         return payload
 
@@ -99,10 +105,26 @@ class Ark:
                 if validate:
                     validate(parsed)
                 return parsed
-            except (ValidationError, ValueError, KeyError, IndexError, TypeError):
+            except (
+                ValidationError,
+                ValueError,
+                KeyError,
+                IndexError,
+                TypeError,
+            ) as exc:
                 if attempt:
                     raise ModelError("模型结果未通过结构校验，请重新生成") from None
-                prompt += "\n上次输出未通过校验。请重新检查所有字段和可选项，不要输出 Markdown 代码围栏。"
+                # Tell the model what actually failed.  This is especially
+                # useful for dynamic local constraints such as allowed IDs and
+                # the per-person budget, which cannot be expressed completely
+                # by the static Pydantic JSON Schema.
+                detail = str(exc).replace("\n", " ")[:600]
+                prompt += (
+                    "\n上次输出未通过校验，错误是："
+                    + detail
+                    + "。请按该错误纠正所有字段，只使用用户数据中提供的 id，"
+                    "不要输出 Markdown 代码围栏。"
+                )
             except httpx.TimeoutException:
                 raise ModelError("模型服务请求超时，请重试") from None
             except httpx.RequestError:

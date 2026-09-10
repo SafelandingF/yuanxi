@@ -60,10 +60,11 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
                     ]
                 )
             elif schema == DateChoice:
+                plan = data["recommended_combinations"][0]
                 r = schema(
-                    meal_id="simple",
-                    activity_id="book",
-                    drink_id="tea",
+                    meal_id=plan["meal_id"],
+                    activity_id=plan["activity_id"],
+                    drink_id=plan["drink_id"],
                     reason="在预算内安排轻松活动",
                     conflict_detected=True,
                     conflict_description="见面频率差异",

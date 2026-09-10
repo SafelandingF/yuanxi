@@ -22,6 +22,9 @@ export interface Analysis {
 }
 export interface DateResult {
   plan: PlanItem[];
+  budget_limit?: number;
+  target_spend?: number;
+  spending_style?: string;
   feedback: boolean;
   feedback_explanation: string;
   adjustment: number;

@@ -18,9 +18,6 @@ def main():
     if not python.exists() or not npm:
         print("请先按 README 安装 Python 虚拟环境与 Node.js 依赖。")
         return 1
-    if not (ROOT / "config.yaml").exists():
-        print("请复制 config.template.yaml 为 config.yaml 并填写 apikey。")
-        return 1
     if not (ROOT / "frontend/node_modules").exists():
         print("请先在 frontend 目录执行 npm install。")
         return 1
@@ -28,7 +25,7 @@ def main():
         [
             str(python),
             "-c",
-            "from backend.core.config import load_settings; print(load_settings().port)",
+            "from backend.core.config import load_port; print(load_port())",
         ],
         cwd=ROOT,
         capture_output=True,
@@ -36,7 +33,7 @@ def main():
         text=True,
     )
     if port.returncode:
-        print("配置读取失败，请检查 config.yaml。")
+        print("启动端口读取失败，请检查 config.yaml。")
         return 1
     env = {**os.environ, "YUANXI_BACKEND_PORT": port.stdout.strip()}
     processes = []

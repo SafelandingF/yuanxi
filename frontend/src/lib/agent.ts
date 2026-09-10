@@ -45,6 +45,7 @@ export interface AgentSession {
       budget: number;
       start: string;
       meal_preference: string;
+      spending_style?: string;
       food_restrictions: string[];
     };
     result: DateResult;

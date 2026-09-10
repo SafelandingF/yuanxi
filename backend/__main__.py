@@ -1,9 +1,8 @@
 import uvicorn
 
-from .core.config import load_settings
+from .core.config import load_port
 
 if __name__ == "__main__":
-    settings = load_settings()
     uvicorn.run(
-        "backend.main:app", host="127.0.0.1", port=settings.port, access_log=False
+        "backend.main:app", host="127.0.0.1", port=load_port(), access_log=False
     )

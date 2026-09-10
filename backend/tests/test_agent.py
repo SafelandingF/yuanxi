@@ -326,10 +326,11 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
 
         async def structured(system, data, schema, validate=None):
             if schema is DateChoice:
+                plan = data["recommended_combinations"][0]
                 result = DateChoice(
-                    meal_id="simple",
-                    activity_id="book",
-                    drink_id="tea",
+                    meal_id=plan["meal_id"],
+                    activity_id=plan["activity_id"],
+                    drink_id=plan["drink_id"],
                     reason="预算合适",
                     conflict_detected=False,
                     conflict_description="",
@@ -367,7 +368,7 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         saved = (await self.client.get(f"/api/agent/sessions/{self.sid}")).json()
         self.assertEqual(saved["latest_date"]["summary"], "行程说明")
         self.assertEqual(
-            sum(p["cost"] for p in saved["latest_date"]["result"]["plan"]), 25
+            sum(p["cost"] for p in saved["latest_date"]["result"]["plan"]), 27
         )
         self.queue.extend(
             [

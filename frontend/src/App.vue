@@ -16,10 +16,15 @@ import {
   ChevronDown,
   Coffee,
   Compass,
+  Eye,
+  EyeOff,
   Heart,
+  KeyRound,
   Leaf,
   Moon,
   RotateCcw,
+  Settings2,
+  ShieldCheck,
   Sparkles,
   Square,
   Users,
@@ -41,6 +46,11 @@ import {
   type PlanItem,
 } from "@/lib/demo";
 import { readStream, type DateResult, type RankedCandidate } from "@/lib/api";
+import {
+  fetchModelConfig,
+  saveModelConfig,
+  type ModelConfigStatus,
+} from "@/lib/config";
 const StreamNote = defineAsyncComponent(
   () => import("@/components/StreamNote.vue"),
 );
@@ -48,6 +58,19 @@ type Step = "profile" | "matches" | "date";
 const mainContent = ref<HTMLElement>();
 const step = ref<Step>("profile"),
   toast = ref("");
+const configOpen = ref(true),
+  configRequired = ref(true),
+  configLoading = ref(true),
+  configSaving = ref(false),
+  configError = ref(""),
+  showApiKey = ref(false);
+const modelConfig = reactive({
+  api_key: "",
+  provider: "volcengine-ark",
+  base_url: "https://ark.cn-beijing.volces.com/api/v3",
+  model: "doubao-seed-2-0-pro-260215",
+  has_api_key: false,
+});
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(message: string) {
   toast.value = message;
@@ -55,6 +78,7 @@ function notify(message: string) {
   toastTimer = setTimeout(() => (toast.value = ""), 4500);
 }
 const mealPreference = ref("都可以"),
+  spendingStyle = ref("均衡安排"),
   foodRestrictions = ref<string[]>([]);
 const defaultProfile: Profile = {
   name: "",
@@ -142,6 +166,20 @@ const ranked = computed<RankedCandidate[]>(
 const planTotal = computed(() =>
   generatedPlan.value.reduce((sum, item) => sum + item.cost, 0),
 );
+const planDuration = computed(() => {
+  if (!generatedPlan.value.length) return "";
+  if (generatedPlan.value.some((item) => !item.duration_minutes))
+    return "2 小时 45 分钟";
+  const minutes =
+    generatedPlan.value.reduce(
+      (sum, item) => sum + (item.duration_minutes || 0),
+      0,
+    ) +
+    Math.max(0, generatedPlan.value.length - 1) * 15;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours ? `${hours} 小时` : ""}${rest ? ` ${rest} 分钟` : ""}`.trim();
+});
 const selectedScore = computed(
   () =>
     finalScore.value ??
@@ -157,7 +195,7 @@ watch(
   },
   { deep: true },
 );
-watch([budget, startTime, mealPreference, foodRestrictions], () => {
+watch([budget, startTime, mealPreference, spendingStyle, foodRestrictions], () => {
   if (streamTarget.value === "date") stopStream();
   dateDirty.value = true;
 });
@@ -244,7 +282,16 @@ function updateSession(session: AgentSession) {
     localStorage.setItem("yuanxi-agent-session", session.session_id);
   } catch {}
 }
-onMounted(async () => {
+
+function applyConfigStatus(status: ModelConfigStatus) {
+  modelConfig.provider = status.provider;
+  modelConfig.base_url = status.base_url;
+  modelConfig.model = status.model;
+  modelConfig.has_api_key = status.has_api_key;
+  modelConfig.api_key = "";
+}
+
+async function restorePreviousSession() {
   try {
     const id = localStorage.getItem("yuanxi-agent-session");
     if (!id) return;
@@ -256,6 +303,69 @@ onMounted(async () => {
   } catch {
     notify("上次对话未能恢复，请确认本地服务已启动，或重新保存资料");
   }
+}
+
+async function loadModelConfiguration() {
+  configLoading.value = true;
+  configError.value = "";
+  try {
+    const status = await fetchModelConfig();
+    applyConfigStatus(status);
+    configRequired.value = !status.configured;
+    configOpen.value = !status.configured;
+    if (status.configured) await restorePreviousSession();
+  } catch (e) {
+    configRequired.value = true;
+    configOpen.value = true;
+    configError.value =
+      e instanceof Error ? e.message : "无法读取本地模型配置";
+  } finally {
+    configLoading.value = false;
+  }
+}
+
+function openModelConfiguration() {
+  configError.value = "";
+  configOpen.value = true;
+}
+
+function closeModelConfiguration() {
+  if (!configRequired.value && !configSaving.value) configOpen.value = false;
+}
+
+async function submitModelConfiguration() {
+  if (configSaving.value) return;
+  if (!modelConfig.has_api_key && !modelConfig.api_key.trim()) {
+    configError.value = "请填写 API Key";
+    return;
+  }
+  if (!modelConfig.base_url.trim() || !modelConfig.model.trim()) {
+    configError.value = "请填写 API 地址和模型名称";
+    return;
+  }
+  configSaving.value = true;
+  configError.value = "";
+  try {
+    const status = await saveModelConfig({
+      api_key: modelConfig.api_key,
+      provider: modelConfig.provider,
+      base_url: modelConfig.base_url,
+      model: modelConfig.model,
+    });
+    applyConfigStatus(status);
+    configRequired.value = false;
+    configOpen.value = false;
+    notify("模型配置已保存到本机");
+    if (!agentSession.value) await restorePreviousSession();
+  } catch (e) {
+    configError.value = e instanceof Error ? e.message : "模型配置保存失败";
+  } finally {
+    configSaving.value = false;
+  }
+}
+
+onMounted(async () => {
+  await loadModelConfiguration();
 });
 
 function navigate(value: Step) {
@@ -304,6 +414,7 @@ async function choose(candidate: Candidate) {
     budget.value = saved.request.budget;
     startTime.value = saved.request.start;
     mealPreference.value = saved.request.meal_preference;
+    spendingStyle.value = saved.request.spending_style || "均衡安排";
     foodRestrictions.value = saved.request.food_restrictions;
     await nextTick();
     generatedPlan.value = saved.result.plan;
@@ -349,7 +460,11 @@ async function generatePlan() {
         budget: budget.value,
         start: startTime.value,
         meal_preference: mealPreference.value,
+        spending_style: spendingStyle.value,
         food_restrictions: foodRestrictions.value,
+        avoid_ids: generatedPlan.value
+          .map((item) => item.catalog_id)
+          .filter((id): id is string => Boolean(id)),
       },
       task.signal,
       (event) => {
@@ -387,6 +502,7 @@ async function generatePlan() {
           budget: budget.value,
           start: startTime.value,
           meal_preference: mealPreference.value,
+          spending_style: spendingStyle.value,
           food_restrictions: [...foodRestrictions.value],
         },
         result: latestResult.value,
@@ -482,6 +598,16 @@ onBeforeUnmount(() => {
           <strong>{{ steps[stepIndex]?.label }}</strong>
         </div>
         <div>
+          <button
+            class="text-button model-settings-button"
+            :disabled="busy"
+            @click="openModelConfiguration"
+            aria-label="模型设置"
+            title="模型设置"
+          >
+            <Settings2 :size="14" />
+            <span>模型设置</span>
+          </button>
           <button
             v-if="step === 'matches'"
             class="text-button"
@@ -797,6 +923,21 @@ onBeforeUnmount(() => {
                     />{{ restriction }}</label
                   >
                 </div>
+                <div class="spending-control">
+                  <span>这次更看重什么？</span>
+                  <div class="spending-options">
+                    <button
+                      v-for="style in ['性价比优先', '均衡安排', '体验优先']"
+                      :key="style"
+                      type="button"
+                      :class="{ selected: spendingStyle === style }"
+                      :aria-pressed="spendingStyle === style"
+                      @click="spendingStyle = style"
+                    >
+                      {{ style }}
+                    </button>
+                  </div>
+                </div>
                 <label
                   >整场预算 <span>元 / 人</span
                   ><Input
@@ -906,7 +1047,7 @@ onBeforeUnmount(() => {
                     <span class="small-index">YOUR LITTLE DATE</span>
                     <h2>把今晚，过得慢一点</h2>
                   </div>
-                  <span>约 2 小时 45 分钟</span>
+                  <span>{{ planDuration ? `约 ${planDuration}` : "" }}</span>
                 </div>
                 <div
                   v-for="(item, index) in generatedPlan"
@@ -940,7 +1081,10 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="itinerary-total">
                   <span
-                    >整场参考费用<small>虚构活动估价，不含交通费</small></span
+                    >整场参考费用<small
+                      >{{ latestResult?.spending_style || spendingStyle }} ·
+                      目标约 ¥{{ latestResult?.target_spend || "—" }}，不含交通费</small
+                    ></span
                   ><strong>¥ {{ planTotal }}<small>/ 人</small></strong>
                 </div>
               </section>
@@ -984,6 +1128,133 @@ onBeforeUnmount(() => {
           ><span>Made for a little connection.</span>
         </footer>
       </main>
+    </div>
+
+    <div
+      v-if="configOpen"
+      class="config-overlay"
+      role="presentation"
+      @keydown.esc="closeModelConfiguration"
+    >
+      <section
+        class="config-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="config-title"
+      >
+        <header class="config-dialog-header">
+          <span class="config-icon"><KeyRound :size="22" /></span>
+          <div>
+            <span class="config-kicker">LOCAL MODEL SETUP</span>
+            <h2 id="config-title">
+              {{ configRequired ? "先连接你的模型服务" : "模型设置" }}
+            </h2>
+          </div>
+          <button
+            v-if="!configRequired"
+            class="config-close"
+            type="button"
+            aria-label="关闭模型设置"
+            @click="closeModelConfiguration"
+          >
+            <X :size="18" />
+          </button>
+        </header>
+
+        <div v-if="configLoading" class="config-loading">
+          <span class="config-spinner" aria-hidden="true"></span>
+          正在读取本地配置…
+        </div>
+
+        <form v-else class="config-form" @submit.prevent="submitModelConfiguration">
+          <p class="config-intro">
+            配置只保存在这台电脑上。API Key 不会显示在页面中，也不会由状态接口返回。
+          </p>
+
+          <label class="config-field">
+            <span>服务类型</span>
+            <select v-model="modelConfig.provider" :disabled="configSaving">
+              <option value="volcengine-ark">火山方舟</option>
+              <option value="openai-compatible">OpenAI 兼容服务</option>
+            </select>
+          </label>
+
+          <label class="config-field">
+            <span>API Key</span>
+            <div class="config-secret-field">
+              <Input
+                v-model="modelConfig.api_key"
+                :type="showApiKey ? 'text' : 'password'"
+                :placeholder="
+                  modelConfig.has_api_key
+                    ? '已保存；留空表示不修改'
+                    : '请输入服务商提供的 API Key'
+                "
+                :disabled="configSaving"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button
+                type="button"
+                :aria-label="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                @click="showApiKey = !showApiKey"
+              >
+                <EyeOff v-if="showApiKey" :size="17" />
+                <Eye v-else :size="17" />
+              </button>
+            </div>
+          </label>
+
+          <label class="config-field">
+            <span>API 地址</span>
+            <Input
+              v-model="modelConfig.base_url"
+              placeholder="例如：https://example.com/v1"
+              :disabled="configSaving"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <small>填写 API 根地址，不要包含 /chat/completions</small>
+          </label>
+
+          <label class="config-field">
+            <span>模型名称</span>
+            <Input
+              v-model="modelConfig.model"
+              placeholder="请输入服务商提供的模型 ID"
+              :disabled="configSaving"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+
+          <p v-if="configError" class="config-error" role="alert">
+            {{ configError }}
+          </p>
+
+          <div class="config-security-note">
+            <ShieldCheck :size="16" />
+            <span>密钥写入本机受 Git 忽略的 config.yaml，不会保存到浏览器。</span>
+          </div>
+
+          <div class="config-actions">
+            <Button
+              v-if="!configRequired"
+              type="button"
+              variant="outline"
+              :disabled="configSaving"
+              @click="closeModelConfiguration"
+            >
+              取消
+            </Button>
+            <Button type="submit" :disabled="configSaving">
+              <span v-if="configSaving" class="config-spinner small" aria-hidden="true"></span>
+              {{ configSaving ? "正在保存…" : configRequired ? "保存并进入" : "保存设置" }}
+            </Button>
+          </div>
+        </form>
+      </section>
     </div>
 
     <div v-if="toast" class="toast" role="status">

@@ -1,5 +1,6 @@
 """FastAPI 应用入口；业务逻辑位于 services / agents / domain。"""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -24,13 +25,19 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app):
         if not hasattr(app.state, "services"):
-            app.state.services = build_services(load_settings())
+            try:
+                app.state.services = build_services(load_settings())
+            except RuntimeError:
+                # Keep the local server alive so the browser can show first-run setup.
+                app.state.services = None
         try:
             yield
         finally:
-            await app.state.services.aclose()
+            if app.state.services is not None:
+                await app.state.services.aclose()
 
     app = FastAPI(title="缘析本地服务", lifespan=lifespan)
+    app.state.configuration_lock = asyncio.Lock()
     # Explicit injection supports tests without YAML, API keys or production databases.
     if settings is not None:
         app.state.services = build_services(settings, repository, model)

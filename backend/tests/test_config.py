@@ -7,7 +7,15 @@ from unittest.mock import patch
 
 import yaml
 
-from backend.core.config import ModelConfig, load_settings
+from backend.core.config import (
+    ConfigUpdate,
+    ModelConfig,
+    config_status,
+    load_port,
+    load_settings,
+    save_settings,
+    settings_from_update,
+)
 from backend.infrastructure.ark import Ark
 
 
@@ -54,6 +62,59 @@ class ConfigTests(unittest.TestCase):
                 )
         with self.assertRaises(RuntimeError):
             self.load({"provider": "openai-compatible"})
+
+    def test_first_run_status_and_safe_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "apikey": "",
+                        "app": {"port": 8123, "database_path": "./data/test.db"},
+                        "llm": {
+                            "provider": "openai-compatible",
+                            "base_url": "",
+                            "model": "",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("backend.core.config.ROOT", root):
+                status = config_status()
+                self.assertFalse(status["configured"])
+                self.assertFalse(status["has_api_key"])
+                self.assertNotIn("api_key", status)
+                self.assertEqual(load_port(), 8123)
+
+                settings = settings_from_update(
+                    ConfigUpdate(
+                        api_key="local-secret",
+                        provider="openai-compatible",
+                        base_url="https://models.example/v1",
+                        model="example-model",
+                    )
+                )
+                save_settings(settings)
+
+                saved_status = config_status()
+                self.assertTrue(saved_status["configured"])
+                self.assertNotIn("local-secret", str(saved_status))
+                saved = yaml.safe_load((root / "config.yaml").read_text("utf-8"))
+                self.assertEqual(saved["apikey"], "local-secret")
+                self.assertEqual(saved["app"]["port"], 8123)
+
+                retained = settings_from_update(
+                    ConfigUpdate(
+                        api_key="",
+                        provider="openai-compatible",
+                        base_url="https://models.example/v2",
+                        model="replacement-model",
+                    )
+                )
+                self.assertEqual(
+                    retained.llm.api_key.get_secret_value(), "local-secret"
+                )
 
 
 class PayloadTests(unittest.IsolatedAsyncioTestCase):
