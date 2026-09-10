@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onBeforeUnmount } from 'vue';
+import { computed, ref, reactive, watch, onBeforeUnmount } from 'vue';
 import { Sparkles, ArrowRight, WandSparkles } from '@lucide/vue';
 import StreamNote from '@/components/StreamNote.vue';
 import { readStream } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import type { Profile } from '@/lib/demo';
+const props = defineProps<{ profile?: Profile }>();
+const emit = defineEmits<{ 'edit-profile': [] }>();
+const linkedProfile = computed(() => {
+  const p = props.profile;
+  return p && p.name.trim() && p.interests.length && p.city.trim() && Number.isInteger(p.age) && p.age >= 18 && p.age <= 80 ? p : null;
+});
 const form = reactive({ birth_date: '', birth_time: '', birth_place: '', relationship_status: '单身', year: new Date().getFullYear(), context: '' });
 const unknownTime = ref(false);
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -13,6 +20,7 @@ let controller: AbortController | undefined;
 let revision = 0;
 function reset() { revision++; controller?.abort(); busy.value = false; content.value = ''; status.value = ''; stopped.value = false; error.value = ''; }
 watch([form, unknownTime], () => { reset(); exampleUsed.value = false; }, { deep: true, flush: 'sync' });
+watch(() => props.profile, reset, { deep: true });
 onBeforeUnmount(reset);
 function preset() {
   unknownTime.value = false;
@@ -27,7 +35,7 @@ async function calculate() {
   const id = revision;
   controller = new AbortController(); busy.value = true;
   try {
-    await readStream('/api/romance/calculate', { ...form, birth_time: unknownTime.value ? null : form.birth_time, calendar: '公历', time_basis: '北京时间 UTC+8' }, controller.signal, (event) => {
+    await readStream('/api/romance/calculate', { ...form, birth_time: unknownTime.value ? null : form.birth_time, calendar: '公历', time_basis: '北京时间 UTC+8', profile: linkedProfile.value }, controller.signal, (event) => {
       if (id !== revision) return;
       if (event.type === 'delta') content.value += event.text;
       if (event.type === 'stage') status.value = event.label;
@@ -41,7 +49,12 @@ async function calculate() {
   <section class="romance-panel">
     <form class="romance-form" @submit.prevent="calculate">
       <div class="romance-form-heading"><h2>你的出生资料</h2><Button type="button" variant="ghost" size="sm" @click="preset"><WandSparkles :size="14" />填入示例</Button></div>
-      <p v-if="exampleUsed" class="example-note">已填入虚构演示资料，点击开始即可体验。</p>
+      <div class="romance-profile-link">
+        <div><strong>{{ linkedProfile ? `已结合 ${linkedProfile.name} 的资料` : '尚未关联个人资料' }}</strong><button type="button" @click="emit('edit-profile')">{{ linkedProfile ? '修改' : '去完善' }}</button></div>
+        <p v-if="linkedProfile">{{ linkedProfile.goal }} · {{ linkedProfile.rhythm }}<br />{{ linkedProfile.interests.join('、') }} · {{ linkedProfile.companionship }}</p>
+        <p v-else>完善兴趣与关系期待，建议会更贴合你。也可直接解读。</p>
+      </div>
+      <p v-if="exampleUsed" class="example-note">已填入虚构出生示例，关联的个人偏好保持不变。</p>
       <label>出生日期 <small>公历</small><input v-model="form.birth_date" type="date" min="1900-01-01" :max="today" required /></label>
       <label>出生时间 <small>北京时间</small><input v-model="form.birth_time" type="time" :disabled="unknownTime" :required="!unknownTime" /></label>
       <label class="unknown-time"><input v-model="unknownTime" type="checkbox" />不清楚具体时间</label>
@@ -75,4 +88,9 @@ input:not([type=checkbox]),select,textarea { display:block; width:100%; min-widt
 .romance-result :deep(.stream-viewport blockquote) { border-left:3px solid var(--primary); background:#f4ece5; border-radius:0 10px 10px 0; padding:16px 20px; margin:0 0 20px; color:var(--foreground); }
 .romance-result :deep(.stream-viewport blockquote p) { font-size:17px; line-height:1.8; margin:0; color:inherit; }
 .romance-result :deep(.stream-viewport h2) { font-size:18px; margin:24px 0 12px; }
+.romance-profile-link { border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom:18px; font-size:12px; }
+.romance-profile-link > div { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.romance-profile-link strong { font-weight:500; color:var(--primary); }
+.romance-profile-link button { color:#818a76; text-decoration:underline; }
+.romance-profile-link p { color:#89907f; line-height:1.8; margin:6px 0 0; }
 </style>

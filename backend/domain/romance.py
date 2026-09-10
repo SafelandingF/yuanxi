@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .schemas import Profile
+
 
 class RomanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -16,6 +18,7 @@ class RomanceRequest(BaseModel):
     relationship_status: Literal["单身", "正在了解", "已有伴侣"] = "单身"
     year: int = Field(ge=1900, le=2100)
     context: str = Field(default="", max_length=1000)
+    profile: Profile | None = None
 
     @field_validator("birth_date")
     @classmethod

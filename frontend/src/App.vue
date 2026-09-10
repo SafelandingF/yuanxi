@@ -872,7 +872,7 @@ onBeforeUnmount(() => {
           />
         </template>
 
-        <RomancePanel v-else-if="step === 'romance'" />
+        <RomancePanel v-else-if="step === 'romance'" :profile="profile" @edit-profile="navigate('profile')" />
 
         <template v-else>
           <div class="date-layout">

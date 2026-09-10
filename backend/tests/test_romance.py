@@ -21,9 +21,24 @@ class RomanceAgentTests(unittest.IsolatedAsyncioTestCase):
         body = RomanceRequest(
             birth_date="2000-06-15", birth_time="14:30", birth_place="杭州", year=2026
         )
+        from backend.domain.schemas import Profile
+
+        body.profile = Profile(
+            name="测试",
+            age=26,
+            city="上海",
+            goal="认真长久",
+            rhythm="忙碌但充实",
+            interests=["阅读", "看展"],
+            companionship="每周 1 次",
+            note="不喜欢热闹聚会",
+        )
         events = [e async for e in RomanceAgent(Model(), RULES).run(body)]
         self.assertEqual(calls[0][0], RULES)
         sent = calls[0][1]
+        self.assertEqual(sent["profile"]["interests"], ["阅读", "看展"])
+        self.assertEqual(sent["profile"]["city"], "上海")
+        self.assertEqual(sent["birth_place"], "杭州")
         self.assertEqual(sent["today_timezone"], "Asia/Shanghai (UTC+8)")
         from datetime import datetime, timedelta, timezone
 
