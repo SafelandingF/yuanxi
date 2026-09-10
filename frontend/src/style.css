@@ -3347,3 +3347,6 @@ main.date-page {
   }
   .config-dialog-header h2 { font-size: 20px; }
 }
+
+main.romance-page { display:flex; min-height:0; overflow:hidden; padding:24px 28px; max-width:none; }
+@media(max-width:640px) { main.romance-page { padding:12px; } }

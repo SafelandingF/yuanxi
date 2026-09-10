@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import AgentWorkspace from "@/components/AgentWorkspace.vue";
 import { sessionRequest, type AgentPart, type AgentSession } from "@/lib/agent";
+import RomancePanel from "@/components/RomancePanel.vue";
 import Portrait from "@/components/Portrait.vue";
 import {
   exampleProfile,
@@ -54,7 +55,7 @@ import {
 const StreamNote = defineAsyncComponent(
   () => import("@/components/StreamNote.vue"),
 );
-type Step = "profile" | "matches" | "date";
+type Step = "profile" | "matches" | "date" | "romance";
 const mainContent = ref<HTMLElement>();
 const step = ref<Step>("profile"),
   toast = ref("");
@@ -158,6 +159,7 @@ const steps = [
   { id: "profile" as const, number: "01", label: "了解自己", icon: Heart },
   { id: "matches" as const, number: "02", label: "匹配助手", icon: Users },
   { id: "date" as const, number: "03", label: "安排约会", icon: Compass },
+  { id: "romance" as const, number: "趣", label: "桃花小签", icon: Sparkles },
 ];
 const stepIndex = computed(() => steps.findIndex((s) => s.id === step.value));
 const ranked = computed<RankedCandidate[]>(
@@ -370,7 +372,7 @@ onMounted(async () => {
 
 function navigate(value: Step) {
   if (busy.value && streamTarget.value !== "date") return;
-  if (value !== "profile" && !agentSession.value) {
+  if (value !== "profile" && value !== "romance" && !agentSession.value) {
     notify("请先完善并保存个人资料");
     return;
   }
@@ -586,7 +588,7 @@ onBeforeUnmount(() => {
             item.label
           }}</span
           ><span class="nav-number">{{
-            index < stepIndex ? "✓" : item.number
+            step !== "romance" && index < stepIndex ? "✓" : item.number
           }}</span>
         </button>
       </nav>
@@ -626,7 +628,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <main ref="mainContent" :class="{ 'profile-page': step === 'profile', 'date-page': step === 'date' }">
+      <main ref="mainContent" :class="{ 'profile-page': step === 'profile', 'date-page': step === 'date', 'romance-page': step === 'romance' }">
         <template v-if="step === 'profile'">
           <section class="hero">
             <div class="hero-copy">
@@ -869,6 +871,8 @@ onBeforeUnmount(() => {
             @arrange="choose"
           />
         </template>
+
+        <RomancePanel v-else-if="step === 'romance'" />
 
         <template v-else>
           <div class="date-layout">

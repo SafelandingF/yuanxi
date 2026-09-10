@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 const props = defineProps<{
   content: string;
   title?: string;
+  compact?: boolean;
   running?: boolean;
   stopped?: boolean;
   error?: string;
@@ -23,25 +24,42 @@ const copied = ref(false),
   follow = ref(true);
 const viewport = ref<HTMLElement>();
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
+let scrollFrame: number | undefined;
+let disposed = false;
+function pauseFollow() {
+  follow.value = false;
+  if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+  scrollFrame = undefined;
+}
+function scrollToLatest() {
+  if (!follow.value || disposed || scrollFrame !== undefined) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = undefined;
+    if (!follow.value || disposed) return;
+    const el = viewport.value;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+  });
+}
 watch(
   () => props.content,
   async () => {
-    if (follow.value) {
-      await nextTick();
-      viewport.value?.scrollTo({ top: viewport.value.scrollHeight });
-    }
+    if (!follow.value) return;
+    await nextTick();
+    // User input may have paused following while Vue was rendering.
+    scrollToLatest();
   },
 );
-function onScroll() {
-  const el = viewport.value;
-  if (el) follow.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+function onWheel(event: WheelEvent) {
+  if (event.deltaY !== 0) pauseFollow();
+}
+function onKeydown(event: KeyboardEvent) {
+  if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+    pauseFollow();
+  }
 }
 function latest() {
   follow.value = true;
-  viewport.value?.scrollTo({
-    top: viewport.value.scrollHeight,
-    behavior: "smooth",
-  });
+  scrollToLatest();
 }
 async function copy() {
   try {
@@ -54,11 +72,15 @@ async function copy() {
     copyError.value = true;
   }
 }
-onBeforeUnmount(() => clearTimeout(copyTimer));
+onBeforeUnmount(() => {
+  disposed = true;
+  pauseFollow();
+  clearTimeout(copyTimer);
+});
 </script>
 <template>
   <section class="stream-note">
-    <div class="stream-heading">
+    <div v-if="!compact" class="stream-heading">
       <span><Sparkles :size="15" />{{ title || "给你的一点观察" }}</span
       ><span class="tiny-label">豆包生成</span>
     </div>
@@ -66,13 +88,18 @@ onBeforeUnmount(() => clearTimeout(copyTimer));
       ref="viewport"
       class="stream-viewport"
       :aria-busy="running"
-      @scroll="onScroll"
+      tabindex="0"
+      aria-label="生成内容，可滚动阅读"
+      @wheel.passive="onWheel"
+      @pointerdown="pauseFollow"
+      @touchstart.passive="pauseFollow"
+      @keydown="onKeydown"
     >
       <MessageResponse :content="content" /><span
         v-if="running"
         class="stream-cursor"
       ></span>
-      <p v-if="!content && running">正在准备说明，行程和生成过程可随时切换查看。</p>
+      <p v-if="!content && running">正在整理资料…</p>
       <p v-if="!content && !running">
         {{ error ? "暂未生成说明，请重试。" : "说明尚未生成。" }}
       </p>
@@ -80,7 +107,7 @@ onBeforeUnmount(() => clearTimeout(copyTimer));
     <div class="stream-actions">
       <span class="stream-status" role="status">{{
         running
-          ? "正在生成安排说明…"
+          ? "正在生成…"
           : error
             ? "生成失败，已保留当前内容"
             : stopped
@@ -89,7 +116,7 @@ onBeforeUnmount(() => clearTimeout(copyTimer));
       }}</span>
       <div>
         <Button v-if="!follow" variant="ghost" size="sm" @click="latest"
-          ><ArrowDown :size="14" />最新</Button
+          ><ArrowDown :size="14" />回到最新</Button
         ><Button v-if="running" variant="ghost" size="sm" @click="emit('stop')"
           ><Square :size="12" />停止</Button
         ><Button v-else variant="ghost" size="sm" @click="emit('retry')"

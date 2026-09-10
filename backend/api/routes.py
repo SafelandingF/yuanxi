@@ -9,6 +9,7 @@ from ..core.config import (
     save_settings,
     settings_from_update,
 )
+from ..domain.romance import RomanceRequest
 from ..domain.schemas import ChatRequest, DateRequest, Profile
 from .streaming import streaming
 
@@ -106,3 +107,8 @@ async def plan(body: DateRequest, ctx: Annotated[Services, Depends(services)]):
 @router.post("/analyze", deprecated=True)
 async def analyze(body: Profile, ctx: Annotated[Services, Depends(services)]):
     return streaming(ctx.legacy.analyze(body))
+
+
+@router.post("/romance/calculate")
+def romance(body: RomanceRequest, ctx: Annotated[Services, Depends(services)]):
+    return streaming(ctx.romance.run(body))
